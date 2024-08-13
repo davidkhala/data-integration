@@ -2,6 +2,7 @@
 - A Databricks job allows you to configure tasks to run in a specified compute environment on a specified schedule. 
 # [Task](https://docs.databricks.com/en/jobs/index.html#what-is-a-task)
 A task represents a unit of logic(最小业务逻辑单元) in a job.
+- task scope is isolated
 
 A task can be
 - A notebook
