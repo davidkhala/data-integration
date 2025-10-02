@@ -25,7 +25,7 @@ Left pane
     - Virtual DataPort Server
     - Data Marketplace
   - Web tools
-    - Web Design Studio
+    - [Web Design Studio](./design/studio.md)
     - Diagnostic & Monitoring Tool
   - Tools
     - link to Virtual DataPort Administration Tool
