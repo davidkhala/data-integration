@@ -8,7 +8,7 @@ setup() {
     docker compose --profile $profile pull
 }
 up() {
-    docker compose --profile $profile up
+    docker compose --profile $profile up -d
 }
 down() {
     docker compose --profile $profile down
