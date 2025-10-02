@@ -1,0 +1,625 @@
+# Copyright 2023 Denodo
+# SPDX-License-Identifier: Apache-2.0
+
+networks:
+    denodo-lab-net:
+        name: denodo-lab-net
+        driver: bridge
+        ipam:
+            config:
+              - subnet: ${NET_SUBNET}
+
+services:
+  
+  # ########################
+  # Denodo 
+  # ########################
+  
+  # Denodo Virtual DataPort server / Data Catalog / Embedded web container (Restful-ws/OData service/GraphQL service)
+  denodo-vdp:
+    container_name: denodocommunity-lab-environment-vdp
+    image: ${DENODO_VERSION}
+    profiles: ["all","denodo","ai"]
+    hostname: ${DENODO_VDP_HOSTNAME}
+    restart: unless-stopped
+    networks:        
+      - denodo-lab-net 
+    volumes:
+      - "${DENODO_SA_LIC}:/opt/denodo/conf/denodo.lic" 
+      - "${DENODO_VDP_INIT_VQL_DIR}:/container-entrypoint-init/"  
+      #- ${DENODO_VDP_GRAPHQL_FILES_DIRECTORY}/application.properties:/opt/denodo/resources/apache-tomcat/webapps/denodo-graphql-service/WEB-INF/classes/application.properties 
+      #- ${DENODO_VDP_GRAPHQL_FILES_DIRECTORY}/web.xml:/opt/denodo/resources/apache-tomcat/conf/web.xml
+      - ${DENODO_VDP_FILES_DIRECTORY}:/opt/denodo/work/lab-files  
+      - "${DENODO_CHATBOT_SAMPLE_DATA_PATH}:/opt/denodo/samples/ai-sdk/sample_chatbot/sample_data"
+      - "${DENODO_DC_CUSTOM_LANG_DIR}/DataCatalogBackend-${DENODO_DC_CUSTOM_LANG}.properties:/denodo/conf/design-studio/DesignStudioBackend.properties"
+      - "${DENODO_DC_CUSTOM_LANG_DIR}/customLang-${DENODO_DC_CUSTOM_LANG}.properties:/opt/denodo/work/data-catalog/customLang.properties"   
+      - denodo-vdp-metadata:/opt/denodo/metadata
+      #- ${DENODO_KEYSTORE}:/opt/denodo/conf/denodo-key-custom.keystore
+    ports:
+      - "${DENODO_VDP_EXTERNAL_WEB_PORT}:9090"
+      - "${DENODO_VDP_EXTERNAL_ARROWFLIGHTSQL_PORT}:9994"
+      - "${DENODO_VDP_EXTERNAL_ODBC_PORT}:9996"
+      - "${DENODO_VDP_EXTERNAL_JMX_PORT}:9997"
+      - "${DENODO_VDP_EXTERNAL_PORT}:9999" 
+    environment:
+      - DENODO_USERNAME=${DENODO_VDP_ADMIN_USER}
+      - DENODO_PASSWORD=${DENODO_VDP_ADMIN_PWD}
+      - DENODO_INIT_MAX_TIMEOUT=180
+      - DENODO_WEBCONTAINER_STARTUP=true
+      - DENODO_DEBUG=true
+      - DENODO_MERGE_CONF=true
+      - DENODO_DC_SERVER_NAME=DenodoVDP
+      - DENODO_WEBCONTAINER_CORS_ENABLED=true
+      - DENODO_WEBCONTAINER_CORS_ORIGINS=http://localhost:4000
+      #- DENODO_KEYSTORE_LOADER_TYPE=FILE
+      #- DENODO_KEYSTORE_LOADER_LOCATION=/opt/denodo/conf/denodo-key-custom.keystore
+      #- DENODO_KEYSTORE_TYPE=${DENODO_KEYSTORE_TYPE}
+      #- DENODO_KEYSTORE_PASSWORD_VALUE=${DENODO_KEYSTORE_PASSWORD_VALUE}
+      #- DENODO_KEYSTORE_KEY_ALIAS=${DENODO_KEYSTORE_KEY_ALIAS}
+    healthcheck:
+      test: ["CMD", "/opt/denodo/bin/ping.sh", "-r", "-t", "5000", "//localhost:9999/admin"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 360s
+      start_interval: 360s
+    command: ["--vqlserver", "--datacatalog"]
+    tty: true
+    stdin_open: true
+  
+  # Denodo Design Studio
+  denodo-ds:
+    container_name: denodocommunity-lab-environment-ds
+    image: ${DENODO_VERSION}
+    profiles: ["all","denodo","ai"]
+    hostname: ${DENODO_DS_HOSTNAME}
+    restart: always
+    networks:        
+      - denodo-lab-net 
+    volumes:
+      - "${DENODO_DS_CUSTOM_LANG_DIR}/DesignStudioBackend-${DENODO_DS_CUSTOM_LANG}.properties:/denodo/conf/design-studio/DesignStudioBackend.properties"
+      - "${DENODO_DS_CUSTOM_LANG_DIR}/customLang-${DENODO_DS_CUSTOM_LANG}.properties:/opt/denodo/work/design-studio/customLang.properties" 
+    ports:
+      - "${DENODO_DS_EXTERNAL_WEB_PORT}:9090"
+    environment:
+      - DENODO_DEBUG=true
+      - DENODO_MERGE_CONF=true
+    healthcheck:
+      test: curl --fail http://localhost:9090/denodo-design-studio/ || exit 1
+      interval: 60s
+      retries: 5
+      start_period: 20s
+      timeout: 10s
+    command: --designstudio 
+
+  # Denodo Scheduler server
+  denodo-sched:
+    container_name: denodocommunity-lab-environment-sched
+    image: ${DENODO_VERSION}
+    profiles: ["all","denodo-sched"]
+    hostname: ${DENODO_SCHED_HOSTNAME}
+    restart: unless-stopped
+    networks:
+      - denodo-lab-net 
+    volumes:
+      - "${DENODO_SA_LIC}:/opt/denodo/conf/denodo.lic"
+      - "${DENODO_SCHED_INIT_ZIP_DIR}:/container-entrypoint-init/" 
+      #- ${DENODO_SCHED_METADATA_VOLUME}:/opt/denodo/metadata/
+      #- ${DENODO_SCHED_INDEX_VOLUME}:/opt/denodo/work/arn/data/index/
+      ##- ${DENODO_KEYSTORE}:/opt/denodo/conf/denodo-key-custom.keystore
+    ports:
+      - "${DENODO_SCHED_EXTERNAL_PORT}:8000"
+      - "${DENODO_SCHED_INDEX_EXTERNAL_PORT}:9000"
+      - "${DENODO_SCHED_EXTERNAL_WEB_PORT}:9090"
+    environment:
+      - DENODO_SCHSERVER_SERVER_HOST=${DENODO_VDP_HOSTNAME}
+      - DENODO_SCHSERVER_SERVER_PORT=9999
+      - DENODO_WEBCONTAINER_STARTUP=true
+      - DENODO_DEBUG=true
+      ##- DENODO_KEYSTORE_LOADER_TYPE=FILE
+      ##- DENODO_KEYSTORE_LOADER_LOCATION=/opt/denodo/conf/denodo-key-custom.keystore
+      ##- DENODO_KEYSTORE_TYPE=${DENODO_KEYSTORE_TYPE}
+      ##- DENODO_KEYSTORE_PASSWORD_VALUE=${DENODO_KEYSTORE_PASSWORD_VALUE}
+      ##- DENODO_KEYSTORE_KEY_ALIAS=${DENODO_KEYSTORE_KEY_ALIAS}
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/denodo/tools/scheduler/ping.sh -t 3000 -h localhost -p 8000 || exit 1"]
+      interval: 6s
+      timeout: 700s
+      retries: 35
+      start_period: 60s
+    command: --schserver --schindex --schadmin
+    tty: true
+    stdin_open: true
+
+  denodo-sm:
+    container_name: denodocommunity-lab-environment-sm
+    image: ${DENODO_SM_VERSION}
+    profiles: ["denodo-sm"]
+    hostname: ${DENODO_SM_HOSTNAME}
+    restart: unless-stopped
+    networks:
+      - denodo-lab-net 
+    ports:
+      - "${DENODO_SM_EXTERNAL_WEB_PORT}:19090"
+    volumes:
+      - "${DENODO_SOL_LIC}:/opt/denodo/conf/denodo.lic"
+      #- ${DENODO_KEYSTORE}:/opt/denodo/conf/denodo-key-custom.keystore
+    environment:
+      - DENODO_DEBUG=true
+      #- DENODO_KEYSTORE_LOADER_TYPE=FILE
+      #- DENODO_KEYSTORE_LOADER_LOCATION=/opt/denodo/conf/denodo-key-custom.keystore
+      #- DENODO_KEYSTORE_TYPE=${DENODO_KEYSTORE_TYPE}
+      #- DENODO_KEYSTORE_PASSWORD_VALUE=${DENODO_KEYSTORE_PASSWORD_VALUE}
+      #- DENODO_KEYSTORE_KEY_ALIAS=${DENODO_KEYSTORE_KEY_ALIAS}
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/denodo/bin/ping.sh -t 3000 //localhost:19999 && curl http://localhost:10090/pingSolutionManager || exit 1"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 360s
+    command: ["--lmserver", "--smserver", "--smadmin"]
+
+  denodo-sm-env:
+    container_name: denodocommunity-lab-environment-sm-env
+    image: ${DENODO_VERSION}
+    profiles: ["denodo-sm"]
+    hostname: ${DENODO_SM_ENV_1_HOSTNAME}
+    restart: unless-stopped
+    networks:
+      - denodo-lab-net
+    #volumes:
+    #  - ${DENODO_KEYSTORE}:/opt/denodo/conf/denodo-key-custom.keystore
+    ports:
+      - "${DENODO_VDP_EXTERNAL_WEB_PORT}:9090"
+      - "${DENODO_VDP_EXTERNAL_ARROWFLIGHTSQL_PORT}:9994"
+      - "${DENODO_VDP_EXTERNAL_ODBC_PORT}:9996"
+      - "${DENODO_VDP_EXTERNAL_JMX_PORT}:9997"
+      - "${DENODO_VDP_EXTERNAL_PORT}:9999"
+      - "${DENODO_SCHED_EXTERNAL_PORT}:8000"
+      - "${DENODO_SCHED_INDEX_EXTERNAL_PORT}:9000"
+    environment:
+      - DENODO_LM_HOST=${DENODO_SM_HOSTNAME}
+      - DENODO_LM_PORT=10091
+      - DENODO_SM_HOST=${DENODO_SM_HOSTNAME}
+      - DENODO_SM_PORT=10090
+      - DENODO_SSO_HOST=${DENODO_SM_HOSTNAME}
+      - DENODO_SSO_PORT=19090
+      - DENODO_REGISTER_ENVIRONMENT_NAME=${DENODO_SM_ENV_1_HOSTNAME}
+      - DENODO_REGISTER_ENVIRONMENT_LICENSE=${DENODO_SOL_LIC_TYPE}
+      - DENODO_REGISTER_SERVER_NAME=server-${DENODO_SM_ENV_1_HOSTNAME}
+      - DENODO_REGISTER_CLUSTER_NAME=cluster-${DENODO_SM_ENV_1_HOSTNAME}
+      - DENODO_REGISTER_SERVER_TYPE=VDP VDP_DATA_CATALOG SCHEDULER
+      - DENODO_REGISTER_SERVER_PORT=9999
+      - DENODO_REGISTER_SERVER_USERNAME=admin
+      - DENODO_REGISTER_SERVER_PASSWORD=admin
+      - DENODO_REGISTER_CLUSTER_DC_URL=http://localhost:9090/denodo-data-catalog/?auth=login
+      - DENODO_DEBUG=true
+      - DENODO_USERNAME=${DENODO_VDP_ADMIN_USER}
+      - DENODO_PASSWORD=${DENODO_VDP_ADMIN_PWD}
+      - DENODO_INIT_MAX_TIMEOUT=180
+      - DENODO_MERGE_CONF=true
+      - DENODO_DC_SERVER_NAME=DenodoVDP
+      #- DENODO_KEYSTORE_LOADER_TYPE=FILE
+      #- DENODO_KEYSTORE_LOADER_LOCATION=/opt/denodo/conf/denodo-key-custom.keystore
+      #- DENODO_KEYSTORE_TYPE=${DENODO_KEYSTORE_TYPE}
+      #- DENODO_KEYSTORE_PASSWORD_VALUE=${DENODO_KEYSTORE_PASSWORD_VALUE}
+      #- DENODO_KEYSTORE_KEY_ALIAS=${DENODO_KEYSTORE_KEY_ALIAS}
+    healthcheck:
+      test: ["CMD", "/opt/denodo/bin/ping.sh", "-r", "-t", "5000", "//localhost:9999/admin"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 360s
+      start_interval: 360s
+    depends_on:
+      denodo-sm:
+        condition: service_healthy
+    command: ["--vqlserver", "--datacatalog", "--schserver", "--schindex"]
+  
+  denodo-ai-sdk:
+    container_name: denodo-ai-sdk
+    image: ${DENODO_AI_SDK_VERSION}
+    profiles: ["all","denodo-aisdk","ai"]
+    hostname: ${DENODO_AI_SDK_HOSTNAME}
+    restart: unless-stopped
+    networks:
+      - denodo-lab-net 
+    depends_on:
+      denodo-vdp:
+        condition: service_healthy
+    #volumes:
+    #  - "${DENODO_CHATBOT_CONFIG_FILE}:/opt/ai-sdk/sample_chatbot/chatbot_config.env"
+    #  - "${DENODO_AI_SDK_CONFIG_FILE}:/opt/ai-sdk/api/utils/sdk_config.env"
+    ports:
+      - "${DENODO_CHATBOT_EXTERNAL_PORT}:9992"
+      - "${DENODO_AI_SDK_EXTERNAL_PORT}:8008"
+    environment:
+      #- AI_SDK_SSL_CERT: "<path_to_public_cert>"
+      #- AI_SDK_SSL_KEY: "<path_to_private_key>"
+      # AI SDK
+      - AI_SDK_ROOT_PATH=${AI_SDK_ROOT_PATH}
+      - AI_SDK_VER=${AI_SDK_VER}
+      - VDB_NAMES=${VDB_NAMES}
+      - VECTOR_STORE=${VECTOR_STORE}
+      - CUSTOM_INSTRUCTIONS=${CUSTOM_INSTRUCTIONS}
+      - AI_SDK_DATA_CATALOG_URL=http://${DENODO_VDP_HOSTNAME}:9090/denodo-data-catalog/ 
+      - LLM_PROVIDER=${PROVIDER}
+      - LLM_MODEL=${LLM_MODEL}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE}
+      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS}
+      - EMBEDDINGS_PROVIDER=${PROVIDER}
+      - EMBEDDINGS_MODEL=${EMB_MODEL}
+      - THINKING_LLM_PROVIDER=${THINKING_LLM_PROVIDER}
+      - THINKING_LLM_MODEL=${THINKING_LLM_MODEL}      
+      - THINKING_LLM_TEMPERATURE=${THINKING_LLM_TEMPERATURE}
+      - THINKING_LLM_MAX_TOKENS=${THINKING_LLM_MAX_TOKENS}
+      # CHATBOT
+      #- CHATBOT_ROOT_PATH=${CHATBOT_ROOT_PATH}
+      - CHATBOT_DATA_CATALOG_URL=../denodo-data-catalog/ 
+      - CHATBOT_LLM_PROVIDER=${PROVIDER}
+      - CHATBOT_LLM_MODEL=${LLM_MODEL}
+      - CHATBOT_EMBEDDINGS_PROVIDER=${PROVIDER}
+      - CHATBOT_EMBEDDINGS_MODEL=${EMB_MODEL}
+      - CHATBOT_VECTOR_STORE_PROVIDER=${VECTOR_STORE}
+      - CHATBOT_AUTO_GRAPH=1
+      - AI_SDK_USERNAME=${DENODO_VDP_ADMIN_USER}
+      - AI_SDK_PASSWORD=${DENODO_VDP_ADMIN_PWD}
+      - AI_SDK_URL=http://localhost:8008
+      # LLM CONFIGURATION
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_ORG_ID=${OPENAI_ORG_ID}
+      - OPENAI_PROXY=${OPENAI_PROXY}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT} 
+      - AZURE_API_VERSION=${AZURE_API_VERSION}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+      - AZURE_OPENAI_PROXY=${AZURE_OPENAI_PROXY}
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS}
+      - GOOGLE_AI_STUDIO_API_KEY=${GOOGLE_AI_STUDIO_API_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_PROFILE_NAME=${AWS_PROFILE_NAME}
+      - AWS_ROLE_ARN=${AWS_ROLE_ARN}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY}
+      - NVIDIA_BASE_URL=${NVIDIA_BASE_URL}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - OLLAMA_API_BASE_URL=${OLLAMA_API_BASE_URL}
+    command: ["python", "run.py", "${DENODO_AI_SDK_MODE}", "--no-logs", "--timeout", "90"]
+      
+  # ########################
+  # Data Sources
+  # ########################
+  # Relational Database
+  ds-mariadb:
+    container_name: denodocommunity-lab-environment-mariadb
+    image: ${RELATIONAL_DB_VERSION}
+    profiles: ["all","ds","ds-mariadb","ds-minimal"]
+    hostname: ${RELATIONAL_DB_HOSTNAME}
+    restart: unless-stopped
+    networks:
+      - denodo-lab-net 
+    volumes:      
+      - ${RELATIONAL_DB_INIT_SCRIPT}:/docker-entrypoint-initdb.d/mariadb-init.sql
+      - ${RELATIONAL_DB_DATA_DIRECTORY}:/mnt
+      - mariadb-lab-env:/var/lib/maria/data
+    environment:
+      MARIADB_ROOT_PASSWORD: ${RELATIONAL_DB_PWD}
+    ports:
+      - "${RELATIONAL_DB_EXTERNAL_PORT}:3306"
+
+  # Analytical Database
+  ds-postgresql:
+    container_name: denodocommunity-lab-environment-postgres
+    image: ${ANALYTICAL_DB_VERSION}
+    profiles: ["all","ds","ds-postgres","ds-minimal"]
+    hostname: ${ANALYTICAL_DB_HOSTNAME}
+    restart: unless-stopped
+    networks:
+      - denodo-lab-net   
+    volumes:   
+      - ${ANALYTICAL_DB_INIT_SCRIPT}:/docker-entrypoint-initdb.d/init.sql
+      - ${ANALYTICAL_DB_DATA_DIRECTORY}:/mnt
+      - postgres-lab-env:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=${ANALYTICAL_DB_PWD}
+      - POSTGRES_DB=postgres
+    ports:
+      - "${ANALYTICAL_DB_PORT}:5432"
+ 
+  # Application server
+  ds-tomcat:
+    container_name: denodocommunity-lab-environment-tomcat 
+    image: ${APPSERVER_VERSION}
+    profiles: ["all","ds","ds-tomcat"]
+    hostname: ${APPSERVER_HOSTNAME}
+    restart: unless-stopped
+    networks: 
+      - denodo-lab-net 
+    ports:
+      - "${APPSERVER_EXTERNAL_PORT}:8080"
+    volumes:
+      - "${APPSERVER_WAR_DIRECTORY}:/usr/local/tomcat/webapps/"
+
+  # HTTP server
+  ds-httpd:
+    container_name: denodocommunity-lab-environment-httpd
+    image: ${HTTPSERVER_VERSION}
+    profiles: ["all","ds","ds-httpd","ds-minimal"]
+    hostname: ${HTTPSERVER_HOSTNAME}
+    restart: unless-stopped
+    networks: 
+      - denodo-lab-net 
+    ports:
+      - "${HTTPSERVER_EXTERNAL_PORT}:80"
+    volumes:
+      - ${HTTPSERVER_WWW_DIRECTORY}:/usr/local/apache2/htdocs
+
+  # NoSQL Database
+  ds-mongo:
+    container_name: denodocommunity-lab-environment-mongo
+    image: ${NOSQL_DB_VERSION}
+    profiles: ["all","ds","ds-mongo"]
+    hostname: ${NOSQL_DB_HOSTNAME}
+    restart: unless-stopped
+    networks:
+      - denodo-lab-net 
+    volumes:
+      - ${NOSQL_DB_INIT_DIRECTORY}:/docker-entrypoint-initdb.d/:ro
+      - mongodb-lab-env:/data/db      
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${NOSQL_DB_ROOT_ADMIN}
+      - MONGO_INITDB_ROOT_PASSWORD=${NOSQL_DB_ROOT_PWD}
+    ports:
+      - '${NOSQL_DB_EXTERNAL_PORT}:27017'
+
+  # MinIO (S3)
+  ds-dfs:
+    container_name: denodocommunity-lab-environment-minio
+    image: ${DFS_VERSION}
+    profiles: ["all","ds-dfs"]
+    hostname: minio
+    restart: always
+    networks:
+      - denodo-lab-net 
+    environment:
+      - MINIO_ROOT_USER=${DFS_ROOT_ADMIN}
+      - MINIO_ROOT_PASSWORD=${DFS_ROOT_PWD}
+    ports:
+      - '${DFS_PORT}:9000'
+      - '${DFS_CONSOLE_PORT}:9001'
+    command: ["server", "/data", "--console-address", ":9001"]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ds-dfs-mc:
+    container_name: denodocommunity-lab-environment-minio-mc
+    image: ${DFS_MC_VERSION}
+    profiles: ["all","ds-dfs"]
+    depends_on:
+      ds-dfs:
+        condition: service_healthy
+    networks:
+      - denodo-lab-net 
+    volumes:
+      - "${DFS_BUCKET_DIRECTORY}${DFS_BUCKET_NAME}:/tmp"
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc config host add minio http://minio:9000 ${DFS_ROOT_ADMIN} ${DFS_ROOT_PWD};
+      /usr/bin/mc mb minio/${DFS_BUCKET_NAME};
+      /usr/bin/mc cp --recursive /tmp/* minio/${DFS_BUCKET_NAME}/
+      "
+
+  # ###################
+  # External Services #
+  # ###################
+  # LDAP
+  ext-apacheds:
+    container_name: denodocommunity-lab-environment-apacheds
+    image: ${LDAP_VERSION}
+    profiles: ["all","ext","sso","ext-ldap","ds"]
+    hostname: ${LDAP_HOSTNAME}
+    restart: unless-stopped
+    networks:
+      - denodo-lab-net 
+    ports:
+      - "${LDAP_EXTERNAL_PORT}:10389"
+    volumes:
+      - ${LDAP_LDIF_DIRECTORY}:/opt/ldif_ext/
+    environment:
+      - DOMAIN_NAME=${LDAP_DOMAIN_NAME}
+      - DOMAIN_SUFFIX=${LDAP_DOMAIN_SUFFIX}
+      - ADMIN_PASSWORD=${LDAP_ADMIN_PASSWORD}  
+
+  # Single Sign On
+  ext-keycloak:
+    container_name: denodocommunity-lab-environment-keycloak
+    image: ${SSO_VERSION}
+    profiles: ["all","ext","sso"]
+    hostname: ${SSO_HOSTNAME}
+    depends_on:
+      - denodo-postgres
+    restart: unless-stopped
+    networks:
+      - denodo-lab-net 
+    ports:
+      - "${SSO_EXTERNAL_PORT}:8080"
+    volumes:
+      - ${SSO_CONF_FILE}:/opt/bitnami/keycloak/data/import/denodo-realm.json
+    environment:
+      KEYCLOAK_ADMIN: ${SSO_USER}
+      KEYCLOAK_ADMIN_PASSWORD: ${SSO_PASSWORD}
+      DB_VENDOR: postgres
+      DB_ADDR: ${METADATA_DB_HOSTNAME}
+      DB_PORT: ${METADATA_DB_PORT}
+      DB_DATABASE: sso
+      DB_USER: ${SSO_USER}
+      DB_PASSWORD: ${SSO_PASSWORD}
+      KEYCLOAK_EXTRA_ARGS: --import-realm
+      KEYCLOAK_IMPORT: /data/denodo-realm.json
+
+  # GIT server
+  ext-git:
+    container_name: denodocommunity-lab-environment-git
+    image: ${VCS_VERSION}
+    profiles: ["all","ext","git"]
+    hostname: ${VCS_HOSTNAME}
+    networks:
+      - denodo-lab-net 
+    restart: always    
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        gitlab_rails['initial_root_password'] = '${VCS_ROOT_PASSWORD}'
+        gitlab_rails['gitlab_shell_ssh_port'] = ${VCS_EXTERNAL_SSH_PORT}
+        gitlab_rails['lfs_enabled'] = true
+    ports:
+      - '${VCS_EXTERNAL_HTTP_PORT}:80'
+      - '${VCS_EXTERNAL_HTTPS_PORT}:443'
+      - '${VCS_EXTERNAL_SSH_PORT}:22'
+    volumes:
+      - git-lab-env:/var/opt/gitlab
+    shm_size: '256m'
+
+  # ####################
+  # Other applications #
+  # ####################
+  # NoSQL GUI 
+  util-mongo-express:
+    container_name: denodocommunity-lab-environment-mongo-express
+    image: ${NOSQL_GUI_VERSION}
+    profiles: ["all","util-mongo-express"]
+    hostname: ${NOSQL_GUI_HOSTNAME}
+    restart: unless-stopped
+    networks:
+      - denodo-lab-net 
+    environment:
+      - ME_CONFIG_MONGO_SERVER=mongodb
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=${NOSQL_DB_ROOT_ADMIN}
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=${NOSQL_DB_ROOT_PWD}
+      - ME_CONFIG_MONGODB_URL=mongodb://${NOSQL_DB_ROOT_ADMIN}:${NOSQL_DB_ROOT_PWD}@${NOSQL_DB_HOSTNAME}:${NOSQL_DB_EXTERNAL_PORT}/
+    ports:
+      - '${NOSQL_GUI_EXTERNAL_PORT}:8081'
+
+  # GraphQL playground
+  util-graphql-playground:
+    container_name: denodocommunity-lab-environment-graphql-playground
+    image: ${GRAPHQL_GUI_VERSION}
+    profiles: ["all","util-graphql","ds"]
+    hostname: ${GRAPHQL_GUI_HOSTNAME}    
+    restart: unless-stopped
+    networks:
+      - denodo-lab-net 
+    ports:
+      - '${GRAPHQL_GUI_EXTERNAL_PORT}:4000'
+    environment:
+      csrfPrevention: false
+      introspection: false
+
+  # Cloudbeaver 
+  util-cloudbeaver:
+    container_name: denodocommunity-lab-environment-cloudbeaver
+    image: ${DB_GUI_VERSION}
+    profiles: ["all","util-dbclient"]
+    hostname: ${DB_GUI_HOSTNAME}
+    restart: always
+    networks:
+      - denodo-lab-net 
+    volumes: 
+      - dbclient-lab-env:/opt/cloudbeaver/workspace
+    ports:
+      - '${DB_GUI_EXTERNAL_PORT}:8978'
+
+  # Jupyter Notebook
+  util-notebook:
+    container_name: denodocommunity-lab-environment-notebook
+    image: ${NOTEBOOK_VERSION}
+    profiles: ["all","notebook","util-notebook"]
+    hostname: ${NOTEBOOK_HOSTNAME}
+    networks:
+      - denodo-lab-net
+    #depends_on: 
+    #  - docker-host
+    restart: unless-stopped
+    volumes: 
+      - ${NOTEBOOK_DIRECTORY}:/home/jovyan/work
+    ports:
+      - '${NOTEBOOK_EXTERNAL_PORT}:8888'
+    command: "start-notebook.sh --ServerApp.base_url=/notebook/ --NotebookApp.token='${NOTEBOOK_TOKEN}'"
+  
+  docker-host:
+    container_name: denodocommunity-lab-environment-dockerhost
+    image: qoomon/docker-host
+    profiles: ["docker-host"]
+    cap_add: [ 'NET_ADMIN', 'NET_RAW' ]
+    restart: on-failure
+    networks:
+      denodo-lab-net:
+        aliases:
+          - ${HOST_ALIAS}
+
+  # Nginx reverse proxy
+  nginx-proxy:
+    container_name: denodocommunity-lab-environment-reverseproxy
+    image: ${REVERSE_PROXY_VERSION}
+    profiles: ["reverse-proxy"]
+    hostname: ${REVERSE_PROXY_HOSTNAME}
+    networks:
+      - denodo-lab-net
+    restart: unless-stopped
+    volumes:
+      - ${REVERSE_PROXY_CONF}:/etc/nginx/nginx.conf:ro  
+      #- ${REVERSE_PROXY_SSL_PUBLIC_CERT}:/ssl/cert.crt
+      #- ${REVERSE_PROXY_SSL_PRIVATE_KEY}:/ssl/cert.key
+    ports:
+      - "${REVERSE_PROXY_EXTERNAL_PORT}:80"
+      - "${REVERSE_PROXY_EXTERNAL_PORT_SSL}:443"
+
+  # Database for storing Denodo metadata, Monitor and Cache
+  denodo-postgres:
+    container_name: denodocommunity-lab-environment-metadata
+    image: ${METADATA_DB_VERSION}
+    profiles: ["all","ds","denodo","ai","sso","ext"]
+    hostname: ${METADATA_DB_HOSTNAME}
+    restart: unless-stopped
+    networks:
+      - denodo-lab-net 
+    volumes:   
+      - ${METADATA_DB_INIT_SCRIPT}:/docker-entrypoint-initdb.d/init.sql
+      - ${METADATA_DB_DATA_DIRECTORY}:/mnt
+      - metadatadb-lab-env:/var/lib/postgresql/data  
+    environment:
+      - POSTGRES_PASSWORD=${METADATA_DB_PWD}
+      - POSTGRES_DB=postgres
+    ports:
+      - "${METADATA_DB_PORT}:${METADATA_DB_PORT}"
+    expose:
+      - "${METADATA_DB_PORT}"
+    command: -p ${METADATA_DB_PORT}
+    healthcheck:
+      test: pg_isready -d denodo -U denodo -p ${METADATA_DB_PORT}
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  metadatadb-lab-env: 
+    driver: local
+  postgres-lab-env: 
+    driver: local
+  mariadb-lab-env: 
+    driver: local
+  mongodb-lab-env: 
+    driver: local
+  dbclient-lab-env:
+    driver: local
+  git-lab-env:
+    driver: local
+  dfs-lab-env:
+    driver: local
+  denodo-vdp-metadata:
+    driver: local
+  minio-lab-env:
+    driver: local
