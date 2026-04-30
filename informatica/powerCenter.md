@@ -33,5 +33,8 @@ Link Types
 - Transformation: Data Transform
 - Target: Data Sink
 
-￼
+## PowerCenter Client
+Installation
+- Only run on Windows
+
 ￼
